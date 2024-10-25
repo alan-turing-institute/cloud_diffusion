@@ -33,6 +33,7 @@ config = SimpleNamespace(
     )
 
 def train_func(config):
+    # config.model_params = get_unet_params(config.model_name, config.num_frames)
     config.model_params = get_unet_params(config.model_name, config.num_frames)
 
     set_seed(config.seed)

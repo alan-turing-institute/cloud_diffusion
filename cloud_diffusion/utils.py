@@ -4,11 +4,12 @@ from pathlib import Path
 import wandb
 import numpy as np
 import torch
-from torch import nn
+from torch import vmap
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data.dataloader import default_collate
+import torch.nn.functional as F
 
 from fastprogress import progress_bar
 
@@ -33,6 +34,51 @@ class NoisifyDataloader(DataLoader):
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
         super().__init__(dataset, *args, collate_fn=noisify_collate(noise_func), **kwargs)
 
+def noisify_last_frame_channels(frames, noise_func):
+    "Noisify the last frame of a sequence. Inputs have shape (batch, channels, time, height, width)."
+    past_frames = frames[:, :, :-1]
+    last_frame  = frames[:, :, -1:]
+
+    # vmap over channels (dim=1)
+    channel_noisify = vmap(noise_func, in_dims=1, out_dims=(0, None, 0), randomness="same")
+    noise, t, e = channel_noisify(last_frame)
+
+    # Swap axes to bring batch dimension first
+    noise = torch.swapaxes(noise, 0, 1)
+
+    # Concatenate past frames and noise along time dimension
+    history_and_noisy_target = torch.cat([past_frames, noise], dim=2)
+
+    # Permute to swap time and channel dimensions
+    history_and_noisy_target = history_and_noisy_target.permute(0, 2, 1, 3, 4)
+
+    # Flatten time and channels
+    history_and_noisy_target = history_and_noisy_target.reshape(
+        history_and_noisy_target.shape[0], 
+        -1,  # 11 * num_frames
+        history_and_noisy_target.shape[3], 
+        history_and_noisy_target.shape[4]
+    )
+
+    # Adjust e similarly
+    e = torch.swapaxes(e, 0, 1)
+    e = e.permute(0, 2, 1, 3, 4)
+    e = e.reshape(e.shape[0], -1, e.shape[3], e.shape[4])
+
+    return history_and_noisy_target, t, e
+
+def noisify_collate_channels(noise_func): 
+    def _inner(b): 
+        "Collate function that noisifies the last frame"
+        return noisify_last_frame_channels(default_collate(b), noise_func)
+    return _inner
+
+class NoisifyDataloaderChannels(DataLoader):
+    """Noisify the last frame of a dataloader by applying 
+    a noise function, after collating the batch"""
+    def __init__(self, dataset, *args, noise_func=None, **kwargs):
+        super().__init__(dataset, *args, collate_fn=noisify_collate_channels(noise_func), **kwargs)
+
 class MiniTrainer:
     "A mini trainer for the diffusion process"
     def __init__(self, 
@@ -40,17 +86,17 @@ class MiniTrainer:
                  valid_dataloader, 
                  model, 
                  sampler, 
-                 device="cuda", 
-                 loss_func=nn.MSELoss(), 
+                 device="cuda",
+                 nan_to_num_value=1.5,
                  ):
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
-        self.loss_func = loss_func
         self.model = model.to(device)
         self.scaler = torch.cuda.amp.GradScaler()
         self.device = device
         self.sampler = sampler
         self.val_batch = next(iter(valid_dataloader))[0].to(device)  # grab a fixed batch to log predictions
+        self.nan_to_num_value = nan_to_num_value
     
     def train_step(self, loss):
         "Train for one step"
@@ -66,12 +112,16 @@ class MiniTrainer:
         pbar = progress_bar(self.train_dataloader, leave=False)
         for batch in pbar:
             frames, t, noise = to_device(batch, device=self.device)
-            with torch.autocast("cuda"):
+            nan_mask = frames[:, (frames.shape[1] - noise.shape[1]):] == self.nan_to_num_value
+            noise[nan_mask] = torch.nan
+            with torch.autocast(self.device):
                 predicted_noise = self.model(frames, t)
-                loss = self.loss_func(noise, predicted_noise)
-            self.train_step(loss)
-            wandb.log({"train_mse": loss.item(),
-                       "learning_rate": self.scheduler.get_last_lr()[0]})
+                loss = torch.nanmean(F.mse_loss(predicted_noise, noise, reduction="none"))
+
+            if loss != torch.nan:
+                self.train_step(loss)
+                wandb.log({"train_mse": loss.item(),
+                        "learning_rate": self.scheduler.get_last_lr()[0]})
             pbar.comment = f"epoch={epoch}, MSE={loss.item():2.3f}"
    
     def prepare(self, config):

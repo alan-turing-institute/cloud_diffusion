@@ -6,10 +6,34 @@ import torchvision.transforms as T
 import wandb
 from fastprogress import progress_bar
 
+from cloudcasting.constants import IMAGE_SIZE_TUPLE
+from cloudcasting.dataset import SatelliteDataset
+
 from cloud_diffusion.utils import ls
 
 PROJECT_NAME = "ddpm_clouds"
 DATASET_ARTIFACT = 'capecape/gtc/np_dataset:v0'
+
+
+class CloudcastingDataset(SatelliteDataset):
+    def __init__(self, img_size, valid=False, strategy="resize", *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if strategy == "resize":
+            tfms = [T.Resize((img_size, int(img_size*(IMAGE_SIZE_TUPLE[1]/IMAGE_SIZE_TUPLE[0]))))] if img_size is not None else []
+            tfms += [T.RandomCrop(img_size)] if not valid else [T.CenterCrop(img_size)]
+        elif strategy == "centercrop":
+            tfms = [T.CenterCrop(img_size)]
+        else:
+            raise ValueError(f"Strategy {strategy} not found")
+        self.tfms = T.Compose(tfms)
+
+    def __getitem__(self, idx: int):
+        # concatenate future prediction and previous frames along time axis
+        concat_data = np.concatenate(super().__getitem__(idx), axis=-3)
+        # data is in [0,1] range, normalize to [-0.5, 0.5]
+        # note that -1s could be NaNs, which are now at +1.5
+        # output has shape (11, history_steps + forecast_horizon, height, width)
+        return 0.5-self.tfms(torch.from_numpy(concat_data))
 
 class DummyNextFrameDataset:
     "Dataset that returns random images"
