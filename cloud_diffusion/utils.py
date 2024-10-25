@@ -67,17 +67,29 @@ def noisify_last_frame_channels(frames, noise_func):
 
     return history_and_noisy_target, t, e
 
-def noisify_collate_channels(noise_func): 
-    def _inner(b): 
-        "Collate function that noisifies the last frame"
-        return noisify_last_frame_channels(default_collate(b), noise_func)
-    return _inner
+def noisify_collate_channels(b, noise_func): 
+    "Collate function that noisifies the last frame"
+    return noisify_last_frame_channels(default_collate(b), noise_func)
+
+from functools import partial
 
 class NoisifyDataloaderChannels(DataLoader):
-    """Noisify the last frame of a dataloader by applying 
-    a noise function, after collating the batch"""
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        super().__init__(dataset, *args, collate_fn=noisify_collate_channels(noise_func), **kwargs)
+        collate_fn = partial(noisify_collate_channels, noise_func=noise_func)
+        super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
+
+
+# def noisify_collate_channels(noise_func): 
+#     def _inner(b): 
+#         "Collate function that noisifies the last frame"
+#         return noisify_last_frame_channels(default_collate(b), noise_func)
+#     return _inner
+
+# class NoisifyDataloaderChannels(DataLoader):
+#     """Noisify the last frame of a dataloader by applying 
+#     a noise function, after collating the batch"""
+#     def __init__(self, dataset, *args, noise_func=None, **kwargs):
+#         super().__init__(dataset, *args, collate_fn=noisify_collate_channels(noise_func), **kwargs)
 
 class MiniTrainer:
     "A mini trainer for the diffusion process"
@@ -92,7 +104,7 @@ class MiniTrainer:
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
         self.model = model.to(device)
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.amp.GradScaler("cuda")
         self.device = device
         self.sampler = sampler
         self.val_batch = next(iter(valid_dataloader))[0].to(device)  # grab a fixed batch to log predictions
