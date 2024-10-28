@@ -4,6 +4,7 @@ import torch
 from torch import sqrt
 from torch.special import expm1
 
+from cloudcasting import NUM_CHANNELS
 from fastprogress import progress_bar
 
 from einops import repeat
@@ -92,7 +93,7 @@ def p_sample(model, past_frames, x, time, time_next):
 
 def p_sample_loop(model, past_frames, steps=500):
     device = past_frames.device
-    new_frame = torch.randn_like(past_frames[:,-1:], dtype=past_frames.dtype, device=device)
+    new_frame = torch.randn_like(past_frames[:,-NUM_CHANNELS:], dtype=past_frames.dtype, device=device)
     time_steps = torch.linspace(1., 0., steps + 1, device = device)
 
     for i in progress_bar(range(steps), total = steps):
