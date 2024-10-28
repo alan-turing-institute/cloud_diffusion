@@ -51,7 +51,7 @@ def train_func(config):
             vit_depth=4,
             channels=config.num_frames*NUM_CHANNELS, 
             patch_size=2,
-            out_dim=NUM_CHANNELS,
+            final_img_itransform=nn.Conv2d(config.num_frames*NUM_CHANNELS, NUM_CHANNELS, 1),
             )
     elif config.model_name == "uvit_big":
         config.model_params = dict(
@@ -60,8 +60,8 @@ def train_func(config):
             vit_depth=8,
             channels=config.num_frames*NUM_CHANNELS,
             patch_size=2,
-            out_dim=NUM_CHANNELS,
-            )
+            final_img_itransform=nn.Conv2d(config.num_frames*NUM_CHANNELS, NUM_CHANNELS, 1),
+        )
     else:
         raise ValueError(f"Model name not found: {config.model_name}, choose between 'uvit_small' or 'uvit_big'")
 
