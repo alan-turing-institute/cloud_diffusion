@@ -11,7 +11,8 @@ from cloudcasting.constants import NUM_CHANNELS, DATA_INTERVAL_SPACING_MINUTES
 from cloud_diffusion.dataset import CloudcastingDataset
 from cloud_diffusion.utils import NoisifyDataloaderChannels, MiniTrainer, set_seed
 from cloud_diffusion.ddpm import noisify_ddpm, ddim_sampler
-from cloud_diffusion.models import UNet2D
+from cloud_diffusion.simple_diffusion import noisify_uvit, simple_diffusion_sampler
+from cloud_diffusion.models import UViT
 
 DEBUG = True
 PROJECT_NAME = "ddpm_clouds"
@@ -27,12 +28,11 @@ config = SimpleNamespace(
     batch_size = 6, # batch size
     img_size = 512, # image size
     device = "cuda", # device
-    num_workers=8, # number of workers for dataloader
+    num_workers=1, # number of workers for dataloader
     num_frames=4, # number of frames to use as input
     lr = 5e-4, # learning rate
-    validation_days=3, # number of days to use for validation
     n_preds=8, # number of predictions to make 
-    log_every_epoch = 5, # log every n epochs to wandb
+    log_every_epoch = 1, # log every n epochs to wandb
 )
 
 def train_func(config):
