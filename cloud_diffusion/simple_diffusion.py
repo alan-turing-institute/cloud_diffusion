@@ -4,7 +4,7 @@ import torch
 from torch import sqrt
 from torch.special import expm1
 
-from cloudcasting import NUM_CHANNELS
+from cloudcasting.constants import NUM_CHANNELS
 from fastprogress import progress_bar
 
 from einops import repeat
