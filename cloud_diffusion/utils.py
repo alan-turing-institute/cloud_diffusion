@@ -11,6 +11,8 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data.dataloader import default_collate
 import torch.nn.functional as F
 
+from cloudcasting.constants import NUM_CHANNELS
+
 from fastprogress import progress_bar
 
 from cloud_diffusion.wandb import log_images, save_model
@@ -150,7 +152,7 @@ class MiniTrainer:
             
             # log predictions
             if epoch % config.log_every_epoch == 0:  
-                samples = self.sampler(self.model, past_frames=self.val_batch[:,:-1])
+                samples = self.sampler(self.model, past_frames=self.val_batch[:,:-NUM_CHANNELS])
                 log_images(self.val_batch, samples)
 
         save_model(self.model, config.model_name)

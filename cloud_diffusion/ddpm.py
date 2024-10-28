@@ -2,6 +2,7 @@ from functools import partial
 
 import torch
 from fastprogress import progress_bar
+from cloudcasting.constants import NUM_CHANNELS
 
 from diffusers.schedulers import DDIMScheduler
 
@@ -24,12 +25,13 @@ def noisify_ddpm(x0):
     xt = ᾱ_t.sqrt()*x0 + (1-ᾱ_t).sqrt()*ε
     return xt, t.to(device), ε
 
+# modified just to use NUM_CHANNELS
 @torch.no_grad()
 def diffusers_sampler(model, past_frames, sched, **kwargs):
     "Using Diffusers built-in samplers"
     model.eval()
     device = next(model.parameters()).device
-    new_frame = torch.randn_like(past_frames[:,-1:], dtype=past_frames.dtype, device=device)
+    new_frame = torch.randn_like(past_frames[:,-NUM_CHANNELS:], dtype=past_frames.dtype, device=device)
     preds = []
     pbar = progress_bar(sched.timesteps, leave=False)
     for t in pbar:
@@ -37,7 +39,7 @@ def diffusers_sampler(model, past_frames, sched, **kwargs):
         noise = model(torch.cat([past_frames, new_frame], dim=1), t)
         new_frame = sched.step(noise, t, new_frame, **kwargs).prev_sample
         preds.append(new_frame.float().cpu())
-    return preds[-1]
+    return preds[-1]  # should have size (batch, channels, height, width)
 
 def ddim_sampler(steps=350, eta=1.):
     "DDIM sampler, faster and a bit better than the built-in sampler"
