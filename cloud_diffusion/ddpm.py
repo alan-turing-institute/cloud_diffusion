@@ -9,11 +9,12 @@ from diffusers.schedulers import DDIMScheduler
 
 ## DDPM params
 ## From fastai V2 Course DDPM notebooks
-betamin,betamax,n_steps = 0.0001,0.02, 1000
+betamin, betamax, n_steps = 0.0001, 0.02, 1000
 beta = torch.linspace(betamin, betamax, n_steps)
-alpha = 1.-beta
+alpha = 1.0 - beta
 alphabar = alpha.cumprod(dim=0)
 sigma = beta.sqrt()
+
 
 def noisify_ddpm(x0):
     "Noise by ddpm"
@@ -22,8 +23,9 @@ def noisify_ddpm(x0):
     t = torch.randint(0, n_steps, (n,), dtype=torch.long)
     ε = torch.randn(x0.shape, device=device)
     ᾱ_t = alphabar[t].reshape(-1, 1, 1, 1).to(device)
-    xt = ᾱ_t.sqrt()*x0 + (1-ᾱ_t).sqrt()*ε
+    xt = ᾱ_t.sqrt() * x0 + (1 - ᾱ_t).sqrt() * ε
     return xt, t.to(device), ε
+
 
 # modified just to use NUM_CHANNELS
 @torch.no_grad()
@@ -31,7 +33,7 @@ def diffusers_sampler(model, past_frames, sched, **kwargs):
     "Using Diffusers built-in samplers"
     model.eval()
     device = next(model.parameters()).device
-    new_frame = torch.randn_like(past_frames[:,-NUM_CHANNELS:], dtype=past_frames.dtype, device=device)
+    new_frame = torch.randn_like(past_frames[:, -NUM_CHANNELS:], dtype=past_frames.dtype, device=device)
     preds = []
     pbar = progress_bar(sched.timesteps, leave=False)
     for t in pbar:
@@ -41,7 +43,8 @@ def diffusers_sampler(model, past_frames, sched, **kwargs):
         preds.append(new_frame.float().cpu())
     return preds[-1]  # should have size (batch, channels, height, width)
 
-def ddim_sampler(steps=350, eta=1.):
+
+def ddim_sampler(steps=350, eta=1.0):
     "DDIM sampler, faster and a bit better than the built-in sampler"
     ddim_sched = DDIMScheduler()
     ddim_sched.set_timesteps(steps)

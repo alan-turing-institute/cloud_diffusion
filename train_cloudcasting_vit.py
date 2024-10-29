@@ -1,9 +1,6 @@
-from pathlib import Path
 from types import SimpleNamespace
 
 import wandb
-import torch
-from torch.utils.data import DataLoader
 from torch import nn
 
 from cloudcasting.constants import NUM_CHANNELS, DATA_INTERVAL_SPACING_MINUTES
@@ -15,24 +12,25 @@ from cloud_diffusion.models import UViT
 
 DEBUG = True
 PROJECT_NAME = "ddpm_clouds"
-DATASET_ARTIFACT = 'capecape/gtc/np_dataset:v0'
+DATASET_ARTIFACT = "capecape/gtc/np_dataset:v0"
 
-config = SimpleNamespace(    
-    epochs = 100, # number of epochs
-    model_name="uvit_small", # model name to save
-    strategy="simple_diffusion", # strategy to use [ddpm, simple_diffusion]
-    noise_steps=1000, # number of noise steps on the diffusion process
-    sampler_steps=500, # number of sampler steps on the diffusion process
-    seed = 42, # random seed
-    batch_size = 2, # batch size
-    img_size = 512, # image size
-    device = "cuda", # device
-    num_workers=1, # number of workers for dataloader
-    num_frames=4, # number of frames to use as input
-    lr = 5e-4, # learning rate
-    n_preds=8, # number of predictions to make 
-    log_every_epoch = 1, # log every n epochs to wandb
+config = SimpleNamespace(
+    epochs=100,  # number of epochs
+    model_name="uvit_small",  # model name to save
+    strategy="simple_diffusion",  # strategy to use [ddpm, simple_diffusion]
+    noise_steps=1000,  # number of noise steps on the diffusion process
+    sampler_steps=500,  # number of sampler steps on the diffusion process
+    seed=42,  # random seed
+    batch_size=2,  # batch size
+    img_size=512,  # image size
+    device="cuda",  # device
+    num_workers=1,  # number of workers for dataloader
+    num_frames=4,  # number of frames to use as input
+    lr=5e-4,  # learning rate
+    n_preds=8,  # number of predictions to make
+    log_every_epoch=1,  # log every n epochs to wandb
 )
+
 
 def train_func(config):
     HISTORY_STEPS = config.num_frames - 1
@@ -49,18 +47,18 @@ def train_func(config):
             dim=512,
             ff_mult=2,
             vit_depth=4,
-            channels=config.num_frames*NUM_CHANNELS, 
+            channels=config.num_frames * NUM_CHANNELS,
             patch_size=2,
-            final_img_itransform=nn.Conv2d(config.num_frames*NUM_CHANNELS, NUM_CHANNELS, 1),
-            )
+            final_img_itransform=nn.Conv2d(config.num_frames * NUM_CHANNELS, NUM_CHANNELS, 1),
+        )
     elif config.model_name == "uvit_big":
         config.model_params = dict(
             dim=1024,
             ff_mult=4,
             vit_depth=8,
-            channels=config.num_frames*NUM_CHANNELS,
+            channels=config.num_frames * NUM_CHANNELS,
             patch_size=2,
-            final_img_itransform=nn.Conv2d(config.num_frames*NUM_CHANNELS, NUM_CHANNELS, 1),
+            final_img_itransform=nn.Conv2d(config.num_frames * NUM_CHANNELS, NUM_CHANNELS, 1),
         )
     else:
         raise ValueError(f"Model name not found: {config.model_name}, choose between 'uvit_small' or 'uvit_big'")
@@ -69,7 +67,6 @@ def train_func(config):
 
     TRAINING_DATA_PATH = "/bask/projects/v/vjgo8416-climate/shared/data/eumetsat/training/2021_nonhrv.zarr"
     VALIDATION_DATA_PATH = "/bask/projects/v/vjgo8416-climate/shared/data/eumetsat/training/2022_training_nonhrv.zarr"
-
 
     # Instantiate the torch dataset object
     train_ds = CloudcastingDataset(
@@ -99,10 +96,8 @@ def train_func(config):
     )
 
     # DDPM dataloaders
-    train_dataloader = NoisifyDataloaderChannels(train_ds, config.batch_size, shuffle=True, 
-                                         noise_func=noisify_uvit,  num_workers=config.num_workers)
-    valid_dataloader = NoisifyDataloaderChannels(valid_ds, config.batch_size, shuffle=False, 
-                                          noise_func=noisify_uvit,  num_workers=config.num_workers)
+    train_dataloader = NoisifyDataloaderChannels(train_ds, config.batch_size, shuffle=True, noise_func=noisify_uvit, num_workers=config.num_workers)
+    valid_dataloader = NoisifyDataloaderChannels(valid_ds, config.batch_size, shuffle=False, noise_func=noisify_uvit, num_workers=config.num_workers)
 
     # model setup
     model = UViT(**config.model_params)
@@ -113,8 +108,8 @@ def train_func(config):
     # A simple training loop
     trainer = MiniTrainer(train_dataloader, valid_dataloader, model, sampler, config.device)
     trainer.fit(config)
-    
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     with wandb.init(project=PROJECT_NAME, config=config, tags=["simple_diffusion", config.model_name]):
         train_func(config)

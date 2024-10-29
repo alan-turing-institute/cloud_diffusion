@@ -14,35 +14,37 @@ try:
 except:
     raise ImportError("Please install denoising_diffusion_pytorch with `pip install denoising_diffusion_pytorch`")
 
+
 def q_sample(x_start, times, noise):
     log_snr = logsnr_schedule_cosine(times)
 
     log_snr_padded = right_pad_dims_to(x_start, log_snr)
     alpha, sigma = torch.sqrt(log_snr_padded.sigmoid()), torch.sqrt((-log_snr_padded).sigmoid())
-    x_noised =  x_start * alpha + noise * sigma
+    x_noised = x_start * alpha + noise * sigma
 
     return x_noised, log_snr
 
+
 def noisify_uvit(x0, pred_objective="v"):
     device = x0.device
-    
-    noise =  torch.randn_like(x0)
-    times = torch.zeros((x0.shape[0],), device = device).float().uniform_(0, 1)
+
+    noise = torch.randn_like(x0)
+    times = torch.zeros((x0.shape[0],), device=device).float().uniform_(0, 1)
     x, log_snr = q_sample(x0, times, noise)
-    
-    if pred_objective == 'v':
+
+    if pred_objective == "v":
         padded_log_snr = right_pad_dims_to(x, log_snr)
         alpha, sigma = padded_log_snr.sigmoid().sqrt(), (-padded_log_snr).sigmoid().sqrt()
         target = alpha * noise - sigma * x0
 
-    elif pred_objective == 'eps':
+    elif pred_objective == "eps":
         target = noise
-        
+
     return x, log_snr, target
 
 
-    
 # Sampling functions
+
 
 @torch.no_grad()
 def forward(model, past_frames, x, t):
@@ -50,7 +52,6 @@ def forward(model, past_frames, x, t):
 
 
 def p_mean_variance(model, past_frames, x, time, time_next, pred_objective="v"):
-    
     log_snr = logsnr_schedule_cosine(time)
     log_snr_next = logsnr_schedule_cosine(time_next)
     c = -expm1(log_snr - log_snr_next)
@@ -60,17 +61,17 @@ def p_mean_variance(model, past_frames, x, time, time_next, pred_objective="v"):
 
     alpha, sigma, alpha_next = map(sqrt, (squared_alpha, squared_sigma, squared_alpha_next))
 
-    batch_log_snr = repeat(log_snr, ' -> b', b = x.shape[0])
-    
+    batch_log_snr = repeat(log_snr, " -> b", b=x.shape[0])
+
     # forward pass (this is expensive)
     pred = forward(model, past_frames, x, t=batch_log_snr)
 
-    if pred_objective == 'v':
+    if pred_objective == "v":
         x_start = alpha * x - sigma * pred
-    elif pred_objective == 'eps':
+    elif pred_objective == "eps":
         x_start = (x - sigma * pred) / alpha
 
-    x_start.clamp_(-1., 1.)
+    x_start.clamp_(-1.0, 1.0)
 
     model_mean = alpha_next * (x * (1 - c) / alpha + c * x_start)
 
@@ -82,7 +83,7 @@ def p_mean_variance(model, past_frames, x, time, time_next, pred_objective="v"):
 def p_sample(model, past_frames, x, time, time_next):
     batch, *_, device = *x.shape, x.device
 
-    model_mean, model_variance = p_mean_variance(model, past_frames, x = x, time = time, time_next = time_next)
+    model_mean, model_variance = p_mean_variance(model, past_frames, x=x, time=time, time_next=time_next)
 
     if time_next == 0:
         return model_mean
@@ -93,15 +94,15 @@ def p_sample(model, past_frames, x, time, time_next):
 
 def p_sample_loop(model, past_frames, steps=500):
     device = past_frames.device
-    new_frame = torch.randn_like(past_frames[:,-NUM_CHANNELS:], dtype=past_frames.dtype, device=device)
-    time_steps = torch.linspace(1., 0., steps + 1, device = device)
+    new_frame = torch.randn_like(past_frames[:, -NUM_CHANNELS:], dtype=past_frames.dtype, device=device)
+    time_steps = torch.linspace(1.0, 0.0, steps + 1, device=device)
 
-    for i in progress_bar(range(steps), total = steps):
+    for i in progress_bar(range(steps), total=steps):
         times = time_steps[i]
         times_next = time_steps[i + 1]
         new_frame = p_sample(model, past_frames, new_frame, time=times, time_next=times_next)
 
-    new_frame.clamp_(-1., 1.)
+    new_frame.clamp_(-1.0, 1.0)
     return new_frame
 
 
