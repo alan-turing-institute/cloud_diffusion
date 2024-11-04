@@ -6,9 +6,9 @@ import torch
 from cloudcasting.constants import NUM_CHANNELS, DATA_INTERVAL_SPACING_MINUTES
 
 from cloud_diffusion.dataset import CloudcastingDataset
-from cloud_diffusion.utils import NoisifyDataloaderChannels, MiniTrainer, set_seed
+from cloud_diffusion.utils import NoisifyDataloaderChannels, MiniTrainer, set_seed, NoisifyDataloader
 from cloud_diffusion.ddpm import noisify_ddpm, ddim_sampler
-from cloud_diffusion.models import UNet2D
+from cloud_diffusion.models import UNet2D, get_unet_params
 
 PROJECT_NAME = "ddpm_clouds"
 MERGE_CHANNELS = True
@@ -81,9 +81,13 @@ def train_func(config):
         return_nan_mask=False,
     )
 
-    # DDPM dataloaders
-    train_dataloader = NoisifyDataloaderChannels(train_ds, config.batch_size, shuffle=True, noise_func=noisify_ddpm, num_workers=config.num_workers)
-    valid_dataloader = NoisifyDataloaderChannels(valid_ds, config.batch_size, shuffle=False, noise_func=noisify_ddpm, num_workers=config.num_workers)
+    if MERGE_CHANNELS:  # randomly select channels to keep for each entry in the dataset
+        train_dataloader = NoisifyDataloader(train_ds, config.batch_size, shuffle=True, noise_func=noisify_ddpm, num_workers=config.num_workers)
+        valid_dataloader = NoisifyDataloader(valid_ds, config.batch_size, shuffle=False, noise_func=noisify_ddpm, num_workers=config.num_workers)
+    else:
+        # DDPM dataloaders
+        train_dataloader = NoisifyDataloaderChannels(train_ds, config.batch_size, shuffle=True, noise_func=noisify_ddpm, num_workers=config.num_workers)
+        valid_dataloader = NoisifyDataloaderChannels(valid_ds, config.batch_size, shuffle=False, noise_func=noisify_ddpm, num_workers=config.num_workers)
 
     # model setup
     model = UNet2D(**config.model_params)

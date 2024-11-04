@@ -19,20 +19,21 @@ from fastprogress import progress_bar
 from cloud_diffusion.wandb import log_images, save_model
 
 
-def noisify_last_frame(frames, noise_func):
+def noisify_last_frame(frames, noise_func, use_nan_mask=False):
     "Noisify the last frame of a sequence"
-    past_frames = frames[:, :-1]
-    last_frame = frames[:, -1:]
+    if use_nan_mask:
+        past_frames = frames[0][:, :-1]
+        last_frame = frames[0][:, -1:]
+    else:
+        past_frames = frames[:, :-1]
+        last_frame = frames[:, -1:]
     noise, t, e = noise_func(last_frame)
-    return torch.cat([past_frames, noise], dim=1), t, e
+    res = torch.cat([past_frames, noise], dim=1), t, e
+    return res, frames[1] if use_nan_mask else res
 
 
-def noisify_collate(noise_func):
-    def _inner(b):
-        "Collate function that noisifies the last frame"
-        return noisify_last_frame(default_collate(b), noise_func)
-
-    return _inner
+def noisify_collate(b, noise_func):
+    return noisify_last_frame(default_collate(b), noise_func)
 
 
 class NoisifyDataloader(DataLoader):
@@ -40,13 +41,18 @@ class NoisifyDataloader(DataLoader):
     a noise function, after collating the batch"""
 
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        super().__init__(dataset, *args, collate_fn=noisify_collate(noise_func), **kwargs)
+        collate_fn = partial(noisify_collate, noise_func=noise_func)
+        super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
 
 
-def noisify_last_frame_channels(frames, noise_func):
+def noisify_last_frame_channels(frames, noise_func, use_nan_mask=False):
     "Noisify the last frame of a sequence. Inputs have shape (batch, channels, time, height, width)."
-    past_frames = frames[:, :, :-1]
-    last_frame = frames[:, :, -1:]
+    if use_nan_mask:
+        past_frames = frames[0][:, :, :-1]
+        last_frame = frames[0][:, :, -1:]
+    else:
+        past_frames = frames[:, :, :-1]
+        last_frame = frames[:, :, -1:]
 
     # vmap over channels (dim=1)
     channel_noisify = vmap(noise_func, in_dims=1, out_dims=(0, None, 0), randomness="same")
@@ -74,7 +80,8 @@ def noisify_last_frame_channels(frames, noise_func):
     e = e.permute(0, 2, 1, 3, 4)
     e = e.reshape(e.shape[0], -1, e.shape[3], e.shape[4])
 
-    return history_and_noisy_target, t, e
+    res = history_and_noisy_target, t, e
+    return res, frames[1] if use_nan_mask else res
 
 
 def noisify_collate_channels(b, noise_func):
@@ -114,7 +121,7 @@ class MiniTrainer:
         model,
         sampler,
         device="cuda",
-        nan_to_num_value=1.5,
+        use_nan_mask=False,
     ):
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
@@ -123,7 +130,7 @@ class MiniTrainer:
         self.device = device
         self.sampler = sampler
         self.val_batch = next(iter(valid_dataloader))[0].to(device)  # grab a fixed batch to log predictions
-        self.nan_to_num_value = nan_to_num_value
+        self.use_nan_mask = use_nan_mask
 
     def train_step(self, loss):
         "Train for one step"
