@@ -146,8 +146,8 @@ class MiniTrainer:
         pbar = progress_bar(self.train_dataloader, leave=False)
         for batch in pbar:
             frames, t, noise = to_device(batch, device=self.device)
-            nan_mask = frames[:, (frames.shape[1] - noise.shape[1]) :] == self.nan_to_num_value
-            noise[nan_mask] = torch.nan
+            
+            # noise[nan_mask] = torch.nan
             with torch.autocast(self.device):
                 predicted_noise = self.model(frames, t)
                 loss = torch.nanmean(F.mse_loss(predicted_noise, noise, reduction="none"))
