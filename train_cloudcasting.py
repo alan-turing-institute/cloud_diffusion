@@ -11,7 +11,7 @@ from cloud_diffusion.ddpm import noisify_ddpm, ddim_sampler
 from cloud_diffusion.models import UNet2D
 
 PROJECT_NAME = "ddpm_clouds"
-DATASET_ARTIFACT = "capecape/gtc/np_dataset:v0"
+MERGE_CHANNELS = True
 
 config = SimpleNamespace(
     epochs=50,  # number of epochs
@@ -26,7 +26,6 @@ config = SimpleNamespace(
     num_workers=8,  # number of workers for dataloader
     num_frames=4,  # number of frames to use as input (includes noise frame)
     lr=5e-4,  # learning rate
-    validation_days=3,  # number of days to use for validation
     log_every_epoch=1,  # log every n epochs to wandb
     n_preds=8,  # number of predictions to make
 )
@@ -34,13 +33,17 @@ config = SimpleNamespace(
 
 def train_func(config):
     HISTORY_STEPS = config.num_frames - 1
-    # config.model_params = get_unet_params(config.model_name, config.num_frames)
-    config.model_params = dict(
-        block_out_channels=(32, 64, 128, 256),  # number of channels for each block
-        norm_num_groups=8,  # number of groups for the normalization layer
-        in_channels=config.num_frames * NUM_CHANNELS,  # number of input channels
-        out_channels=NUM_CHANNELS,  # number of output channels
-    )
+
+    if MERGE_CHANNELS:  # randomly select channels to keep for each entry in the dataset
+        config.model_params = get_unet_params(config.model_name, config.num_frames)
+    
+    else:  # keep the channel dimension
+        config.model_params = dict(
+            block_out_channels=(32, 64, 128, 256),  # number of channels for each block
+            norm_num_groups=8,  # number of groups for the normalization layer
+            in_channels=config.num_frames * NUM_CHANNELS,  # number of input channels
+            out_channels=NUM_CHANNELS,  # number of output channels
+        )
 
     set_seed(config.seed)
 
@@ -51,27 +54,31 @@ def train_func(config):
     train_ds = CloudcastingDataset(
         config.img_size,
         valid=False,
-        strategy="centercrop",
+        strategy="resize",
         zarr_path=TRAINING_DATA_PATH,
         start_time="2021-01-01",
         end_time=None,
         history_mins=(HISTORY_STEPS - 1) * DATA_INTERVAL_SPACING_MINUTES,
         forecast_mins=15,
         sample_freq_mins=15,
-        nan_to_num=False,
+        nan_to_num=True,
+        merge_channels=MERGE_CHANNELS,
+        return_nan_mask=False,
     )
     # worth noting they do some sort of shuffling here; we don't for now
     valid_ds = CloudcastingDataset(
         config.img_size,
         valid=True,
-        strategy="centercrop",
+        strategy="resize",
         zarr_path=VALIDATION_DATA_PATH,
         start_time="2022-01-01",
         end_time=None,
         history_mins=(HISTORY_STEPS - 1) * DATA_INTERVAL_SPACING_MINUTES,
         forecast_mins=15,
         sample_freq_mins=15,
-        nan_to_num=False,
+        nan_to_num=True,
+        merge_channels=MERGE_CHANNELS,
+        return_nan_mask=False,
     )
 
     # DDPM dataloaders

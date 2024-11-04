@@ -1,12 +1,13 @@
 from pathlib import Path
 
 import numpy as np
+import numpy.random as npr
 import torch
 import torchvision.transforms as T
 import wandb
 from fastprogress import progress_bar
 
-from cloudcasting.constants import IMAGE_SIZE_TUPLE
+from cloudcasting.constants import IMAGE_SIZE_TUPLE, NUM_CHANNELS
 from cloudcasting.dataset import SatelliteDataset
 
 from cloud_diffusion.utils import ls
@@ -16,8 +17,10 @@ DATASET_ARTIFACT = "capecape/gtc/np_dataset:v0"
 
 
 class CloudcastingDataset(SatelliteDataset):
-    def __init__(self, img_size, valid=False, strategy="resize", *args, **kwargs):
+    def __init__(self, img_size, valid=False, strategy="resize", merge_channels=False, return_nan_mask=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.return_nan_mask = return_nan_mask
+
         if strategy == "resize":
             tfms = [T.Resize((img_size, int(img_size * (IMAGE_SIZE_TUPLE[1] / IMAGE_SIZE_TUPLE[0]))))] if img_size is not None else []
             tfms += [T.RandomCrop(img_size)] if not valid else [T.CenterCrop(img_size)]
@@ -27,13 +30,29 @@ class CloudcastingDataset(SatelliteDataset):
             raise ValueError(f"Strategy {strategy} not found")
         self.tfms = T.Compose(tfms)
 
+        if merge_channels:
+            # for each entry in the dataset, randomly select a channel to keep.
+            # note this is deterministic for every entry in the dataset;
+            # you will get the same set of channels every epoch.
+            self.idxs = npr.choice(NUM_CHANNELS, size=super().__len__(), replace=True)
+        else:
+            self.idxs = [...] * super().__len__()  # x[...] just returns x
+
+
     def __getitem__(self, idx: int):
         # concatenate future prediction and previous frames along time axis
-        concat_data = np.concatenate(super().__getitem__(idx), axis=-3)
+        x, y = super().__getitem__(idx)
+        
+        concat_data = np.concatenate((x, y), axis=-3)[self.idxs[idx]]
         # data is in [0,1] range, normalize to [-0.5, 0.5]
         # note that -1s could be NaNs, which are now at +1.5
-        # output has shape (11, history_steps + forecast_horizon, height, width)
+        # output has shape (11 (if merge_channels is False), history_steps + forecast_horizon, height, width)
+        if self.return_nan_mask:
+            nan_mask = y == (-1 if self.nan_to_num else np.nan)
+            return 0.5 - self.tfms(torch.from_numpy(concat_data)), nan_mask
+        
         return 0.5 - self.tfms(torch.from_numpy(concat_data))
+
 
 
 class DummyNextFrameDataset:
