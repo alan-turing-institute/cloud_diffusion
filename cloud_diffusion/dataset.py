@@ -50,7 +50,6 @@ class CloudcastingDataset(SatelliteDataset):
         if self.return_nan_mask:
             nan_mask = y == (-1 if self.nan_to_num else np.nan)
             return 0.5 - self.tfms(torch.from_numpy(concat_data)), nan_mask
-        return concat_data 
         return 0.5 - self.tfms(torch.from_numpy(concat_data))
 
 
