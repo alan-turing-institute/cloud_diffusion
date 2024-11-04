@@ -171,7 +171,7 @@ class MiniTrainer:
 
             # log predictions
             if epoch % config.log_every_epoch == 0:
-                samples = self.sampler(self.model, past_frames=self.val_batch[:, :-NUM_CHANNELS])
+                samples = self.sampler(self.model, past_frames=self.val_batch[:, :-1])
                 log_images(self.val_batch, samples)
 
         save_model(self.model, config.model_name)
