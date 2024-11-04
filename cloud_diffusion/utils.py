@@ -29,7 +29,7 @@ def noisify_last_frame(frames, noise_func, use_nan_mask=False):
         last_frame = frames[:, -1:]
     noise, t, e = noise_func(last_frame)
     res = torch.cat([past_frames, noise], dim=1), t, e
-    return res, frames[1] if use_nan_mask else res
+    return (res, frames[1]) if use_nan_mask else res
 
 
 def noisify_collate(b, noise_func):
@@ -81,7 +81,7 @@ def noisify_last_frame_channels(frames, noise_func, use_nan_mask=False):
     e = e.reshape(e.shape[0], -1, e.shape[3], e.shape[4])
 
     res = history_and_noisy_target, t, e
-    return res, frames[1] if use_nan_mask else res
+    return (res, frames[1]) if use_nan_mask else res
 
 
 def noisify_collate_channels(b, noise_func):
