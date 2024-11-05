@@ -28,14 +28,11 @@ def noisify_last_frame(frames, noise_func):
 
     # images have their nans in -- preserve the mask for the last frame
     last_frame_mask = torch.isnan(last_frame)
-    print(f"{last_frame_mask.shape=}")
     # then we replace all nans in all images with 0s
     past_frames = torch.nan_to_num(past_frames, nan=0)
     last_frame = torch.nan_to_num(last_frame, nan=0)
 
     noised_img, t, e = noise_func(last_frame)
-
-    print(f"{e.shape=}")
 
     # replace the nans in the noise with the original nans
     e[last_frame_mask] = torch.nan
@@ -63,8 +60,6 @@ def noisify_last_frame_channels(frames, noise_func):
     # images have their nans in -- preserve the mask for the last frame
     last_frame_mask = torch.isnan(last_frame)
 
-    print(f"{last_frame_mask.shape=}")
-
     # then we replace all nans in all images with 0s
     past_frames = torch.nan_to_num(past_frames, nan=0)
     last_frame = torch.nan_to_num(last_frame, nan=0)
@@ -74,7 +69,6 @@ def noisify_last_frame_channels(frames, noise_func):
     channel_noisify = vmap(noise_func, in_dims=1, out_dims=(0, None, 0), randomness="same")
     noise, t, e = channel_noisify(last_frame)
     
-    print(f"{e.shape=}")
     # Swap axes to bring batch dimension first
     noise = torch.swapaxes(noise, 0, 1)
 
@@ -96,6 +90,8 @@ def noisify_last_frame_channels(frames, noise_func):
     e = torch.swapaxes(e, 0, 1)
     # here, we're back to [batch, channels, time, height, width], so apply the mask to the added noise
     # which is in the original data shape
+    # clone tensor based on deprecation warning
+    e = e.clone()
     e[last_frame_mask] = torch.nan
     # then collapse the channels and time dimensions as above
     e = e.permute(0, 2, 1, 3, 4)
