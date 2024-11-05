@@ -17,10 +17,13 @@ DATASET_ARTIFACT = "capecape/gtc/np_dataset:v0"
 
 
 class CloudcastingDataset(SatelliteDataset):
-    def __init__(self, img_size, valid=False, strategy="resize", merge_channels=False, return_nan_mask=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.return_nan_mask = return_nan_mask
-
+    def __init__(self, img_size, valid=False, strategy="resize", merge_channels=False, *args, **kwargs):
+        
+        if "nan_to_num" in kwargs:
+            if kwargs["nan_to_num"]:
+                print("nan_to_num must be False for CloudcastingDataset but was set to True; ignoring")
+            kwargs.pop("nan_to_num")
+        super().__init__(*args, nan_to_num=False, **kwargs)
         if strategy == "resize":
             tfms = [T.Resize((img_size, int(img_size * (IMAGE_SIZE_TUPLE[1] / IMAGE_SIZE_TUPLE[0]))))] if img_size is not None else []
             tfms += [T.RandomCrop(img_size)] if not valid else [T.CenterCrop(img_size)]
@@ -47,9 +50,6 @@ class CloudcastingDataset(SatelliteDataset):
         # data is in [0,1] range, normalize to [-0.5, 0.5]
         # note that -1s could be NaNs, which are now at +1.5
         # output has shape (11 (if merge_channels is False), history_steps + forecast_horizon, height, width)
-        if self.return_nan_mask:
-            nan_mask = (y == -1) if self.nan_to_num else np.isnan(y)
-            return 0.5 - self.tfms(torch.from_numpy(concat_data)), nan_mask
         return 0.5 - self.tfms(torch.from_numpy(concat_data))
 
 

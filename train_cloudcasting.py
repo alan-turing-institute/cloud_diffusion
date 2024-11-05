@@ -12,6 +12,7 @@ from cloud_diffusion.models import UNet2D, get_unet_params
 
 PROJECT_NAME = "ddpm_clouds"
 MERGE_CHANNELS = True
+DEBUG = True
 
 config = SimpleNamespace(
     epochs=50,  # number of epochs
@@ -56,14 +57,13 @@ def train_func(config):
         valid=False,
         strategy="resize",
         zarr_path=TRAINING_DATA_PATH,
-        start_time="2021-01-01",
-        end_time=None,
+        start_time=None,
+        end_time="2021-01-02" if DEBUG else None,
         history_mins=(HISTORY_STEPS - 1) * DATA_INTERVAL_SPACING_MINUTES,
         forecast_mins=15,
         sample_freq_mins=15,
-        nan_to_num=True,
+        nan_to_num=False,
         merge_channels=MERGE_CHANNELS,
-        return_nan_mask=False,
     )
     # worth noting they do some sort of shuffling here; we don't for now
     valid_ds = CloudcastingDataset(
@@ -71,14 +71,13 @@ def train_func(config):
         valid=True,
         strategy="resize",
         zarr_path=VALIDATION_DATA_PATH,
-        start_time="2022-01-01",
-        end_time=None,
+        start_time=None,
+        end_time="2022-01-02" if DEBUG else None,
         history_mins=(HISTORY_STEPS - 1) * DATA_INTERVAL_SPACING_MINUTES,
         forecast_mins=15,
         sample_freq_mins=15,
-        nan_to_num=True,
+        nan_to_num=False,
         merge_channels=MERGE_CHANNELS,
-        return_nan_mask=False,
     )
 
     if MERGE_CHANNELS:  # randomly select channels to keep for each entry in the dataset

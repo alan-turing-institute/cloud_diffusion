@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data.dataloader import default_collate
 import torch.nn.functional as F
+from functools import partial
+
 
 from cloudcasting.constants import NUM_CHANNELS
 
@@ -19,22 +21,27 @@ from fastprogress import progress_bar
 from cloud_diffusion.wandb import log_images, save_model
 
 
-def noisify_last_frame(frames, noise_func, use_nan_mask=False):
+def noisify_last_frame(frames, noise_func):
     "Noisify the last frame of a sequence"
-    if use_nan_mask:
-        past_frames = frames[0][:, :-1]
-        last_frame = frames[0][:, -1:]
-    else:
-        past_frames = frames[:, :-1]
-        last_frame = frames[:, -1:]
-    noise, t, e = noise_func(last_frame)
-    if use_nan_mask:
-        e[frames[1]] = torch.nan
-    return torch.cat([past_frames, noise], dim=1), t, e
+    past_frames = frames[:, :-1]
+    last_frame = frames[:, -1:]
+
+    # images have their nans in -- preserve the mask for the last frame
+    last_frame_mask = torch.isnan(last_frame)
+
+    # then we replace all nans in all images with 0s
+    past_frames = torch.nan_to_num(past_frames, nan=0)
+    last_frame = torch.nan_to_num(last_frame, nan=0)
+
+    noised_img, t, e = noise_func(last_frame)
+
+    # replace the nans in the noise with the original nans
+    e[last_frame_mask] = torch.nan
+    return torch.cat([past_frames, noised_img], dim=1), t, e
 
 
-def noisify_collate(b, noise_func, use_nan_mask=False):
-    return noisify_last_frame(default_collate(b), noise_func, use_nan_mask=use_nan_mask)
+def noisify_collate(b, noise_func):
+    return noisify_last_frame(default_collate(b), noise_func)
 
 
 class NoisifyDataloader(DataLoader):
@@ -42,22 +49,23 @@ class NoisifyDataloader(DataLoader):
     a noise function, after collating the batch"""
 
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        if hasattr(dataset, 'return_nan_mask'):
-            collate_fn = partial(noisify_collate, noise_func=noise_func, use_nan_mask=dataset.return_nan_mask)
-        else:
-            collate_fn = partial(noisify_collate, noise_func=noise_func, use_nan_mask=False)
+        collate_fn = partial(noisify_collate, noise_func=noise_func)
         super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
 
 
-def noisify_last_frame_channels(frames, noise_func, use_nan_mask=False):
+def noisify_last_frame_channels(frames, noise_func):
     "Noisify the last frame of a sequence. Inputs have shape (batch, channels, time, height, width)."
-    if use_nan_mask:
-        past_frames = frames[0][:, :, :-1]
-        last_frame = frames[0][:, :, -1:]
-    else:
-        past_frames = frames[:, :, :-1]
-        last_frame = frames[:, :, -1:]
+    past_frames = frames[:, :, :-1]
+    last_frame = frames[:, :, -1:]
 
+    # images have their nans in -- preserve the mask for the last frame
+    last_frame_mask = torch.isnan(last_frame)
+
+    # then we replace all nans in all images with 0s
+    past_frames = torch.nan_to_num(past_frames, nan=0)
+    last_frame = torch.nan_to_num(last_frame, nan=0)
+
+ 
     # vmap over channels (dim=1)
     channel_noisify = vmap(noise_func, in_dims=1, out_dims=(0, None, 0), randomness="same")
     noise, t, e = channel_noisify(last_frame)
@@ -83,8 +91,7 @@ def noisify_last_frame_channels(frames, noise_func, use_nan_mask=False):
     e = torch.swapaxes(e, 0, 1)
     # here, we're back to [batch, channels, time, height, width], so apply the mask to the added noise
     # which is in the original data shape
-    if use_nan_mask:
-        e[frames[1]] = torch.nan
+    e[last_frame_mask] = torch.nan
     # then collapse the channels and time dimensions as above
     e = e.permute(0, 2, 1, 3, 4)
     e = e.reshape(e.shape[0], -1, e.shape[3], e.shape[4])
@@ -92,33 +99,15 @@ def noisify_last_frame_channels(frames, noise_func, use_nan_mask=False):
     return history_and_noisy_target, t, e
 
 
-def noisify_collate_channels(b, noise_func, use_nan_mask=False):
+def noisify_collate_channels(b, noise_func):
     "Collate function that noisifies the last frame"
-    return noisify_last_frame_channels(default_collate(b), noise_func, use_nan_mask=use_nan_mask)
-
-from functools import partial
+    return noisify_last_frame_channels(default_collate(b), noise_func)
 
 
 class NoisifyDataloaderChannels(DataLoader):
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        if hasattr(dataset, 'return_nan_mask'):
-            collate_fn = partial(noisify_collate_channels, noise_func=noise_func, use_nan_mask=dataset.return_nan_mask)
-        else:
-            collate_fn = partial(noisify_collate_channels, noise_func=noise_func, use_nan_mask=False)
+        collate_fn = partial(noisify_collate_channels, noise_func=noise_func)
         super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
-
-
-# def noisify_collate_channels(noise_func):
-#     def _inner(b):
-#         "Collate function that noisifies the last frame"
-#         return noisify_last_frame_channels(default_collate(b), noise_func)
-#     return _inner
-
-# class NoisifyDataloaderChannels(DataLoader):
-#     """Noisify the last frame of a dataloader by applying
-#     a noise function, after collating the batch"""
-#     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-#         super().__init__(dataset, *args, collate_fn=noisify_collate_channels(noise_func), **kwargs)
 
 
 class MiniTrainer:
@@ -139,10 +128,6 @@ class MiniTrainer:
         self.device = device
         self.sampler = sampler
         self.val_batch = next(iter(valid_dataloader))[0].to(device)  # grab a fixed batch to log predictions
-        if hasattr(train_dataloader.dataset, 'return_nan_mask'):
-            self.use_nan_mask = train_dataloader.dataset.return_nan_mask
-        else:
-            self.use_nan_mask = False
         if hasattr(train_dataloader.dataset, 'merge_channels'):
             self.use_channels = not train_dataloader.dataset.merge_channels
         else:
