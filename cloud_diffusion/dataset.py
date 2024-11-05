@@ -32,6 +32,7 @@ class CloudcastingDataset(SatelliteDataset):
         else:
             raise ValueError(f"Strategy {strategy} not found")
         self.tfms = T.Compose(tfms)
+        self.merge_channels = merge_channels
 
         if merge_channels:
             # for each entry in the dataset, randomly select a channel to keep.

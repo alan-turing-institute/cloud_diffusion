@@ -34,6 +34,8 @@ def diffusers_sampler(model, past_frames, sched, use_channels=False, **kwargs):
     model.eval()
     device = next(model.parameters()).device
     new_frame = torch.randn_like(past_frames[:, -(NUM_CHANNELS if use_channels else 1):], dtype=past_frames.dtype, device=device)
+    print(f"{new_frame.shape=}")
+    print(f"{past_frames.shape=}")
     preds = []
     pbar = progress_bar(sched.timesteps, leave=False)
     for t in pbar:
