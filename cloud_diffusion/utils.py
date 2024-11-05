@@ -42,7 +42,10 @@ class NoisifyDataloader(DataLoader):
     a noise function, after collating the batch"""
 
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        collate_fn = partial(noisify_collate, noise_func=noise_func, use_nan_mask=dataset.use_nan_mask)
+        if hasattr(dataset, 'return_nan_mask'):
+            collate_fn = partial(noisify_collate, noise_func=noise_func, use_nan_mask=dataset.return_nan_mask)
+        else:
+            collate_fn = partial(noisify_collate, noise_func=noise_func, use_nan_mask=False)
         super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
 
 
@@ -98,7 +101,10 @@ from functools import partial
 
 class NoisifyDataloaderChannels(DataLoader):
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        collate_fn = partial(noisify_collate_channels, noise_func=noise_func, use_nan_mask=dataset.use_nan_mask)
+        if hasattr(dataset, 'return_nan_mask'):
+            collate_fn = partial(noisify_collate_channels, noise_func=noise_func, use_nan_mask=dataset.return_nan_mask)
+        else:
+            collate_fn = partial(noisify_collate_channels, noise_func=noise_func, use_nan_mask=False)
         super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
 
 
