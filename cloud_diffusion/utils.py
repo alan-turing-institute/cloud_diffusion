@@ -28,12 +28,13 @@ def noisify_last_frame(frames, noise_func, use_nan_mask=False):
         past_frames = frames[:, :-1]
         last_frame = frames[:, -1:]
     noise, t, e = noise_func(last_frame)
-    res = torch.cat([past_frames, noise], dim=1), t, e
-    return (res, frames[1]) if use_nan_mask else res
+    if use_nan_mask:
+        e[frames[1]] = torch.nan
+    return torch.cat([past_frames, noise], dim=1), t, e
 
 
-def noisify_collate(b, noise_func):
-    return noisify_last_frame(default_collate(b), noise_func)
+def noisify_collate(b, noise_func, use_nan_mask=False):
+    return noisify_last_frame(default_collate(b), noise_func, use_nan_mask=use_nan_mask)
 
 
 class NoisifyDataloader(DataLoader):
@@ -41,7 +42,7 @@ class NoisifyDataloader(DataLoader):
     a noise function, after collating the batch"""
 
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        collate_fn = partial(noisify_collate, noise_func=noise_func)
+        collate_fn = partial(noisify_collate, noise_func=noise_func, use_nan_mask=dataset.use_nan_mask)
         super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
 
 
@@ -77,24 +78,27 @@ def noisify_last_frame_channels(frames, noise_func, use_nan_mask=False):
 
     # Adjust e similarly
     e = torch.swapaxes(e, 0, 1)
+    # here, we're back to [batch, channels, time, height, width], so apply the mask to the added noise
+    # which is in the original data shape
+    if use_nan_mask:
+        e[frames[1]] = torch.nan
+    # then collapse the channels and time dimensions as above
     e = e.permute(0, 2, 1, 3, 4)
     e = e.reshape(e.shape[0], -1, e.shape[3], e.shape[4])
 
-    res = history_and_noisy_target, t, e
-    return (res, frames[1]) if use_nan_mask else res
+    return history_and_noisy_target, t, e
 
 
-def noisify_collate_channels(b, noise_func):
+def noisify_collate_channels(b, noise_func, use_nan_mask=False):
     "Collate function that noisifies the last frame"
-    return noisify_last_frame_channels(default_collate(b), noise_func)
-
+    return noisify_last_frame_channels(default_collate(b), noise_func, use_nan_mask=use_nan_mask)
 
 from functools import partial
 
 
 class NoisifyDataloaderChannels(DataLoader):
     def __init__(self, dataset, *args, noise_func=None, **kwargs):
-        collate_fn = partial(noisify_collate_channels, noise_func=noise_func)
+        collate_fn = partial(noisify_collate_channels, noise_func=noise_func, use_nan_mask=dataset.use_nan_mask)
         super().__init__(dataset, *args, collate_fn=collate_fn, **kwargs)
 
 
@@ -121,7 +125,6 @@ class MiniTrainer:
         model,
         sampler,
         device="cuda",
-        use_nan_mask=False,
     ):
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
@@ -130,7 +133,14 @@ class MiniTrainer:
         self.device = device
         self.sampler = sampler
         self.val_batch = next(iter(valid_dataloader))[0].to(device)  # grab a fixed batch to log predictions
-        self.use_nan_mask = use_nan_mask
+        if hasattr(train_dataloader.dataset, 'return_nan_mask'):
+            self.use_nan_mask = train_dataloader.dataset.return_nan_mask
+        else:
+            self.use_nan_mask = False
+        if hasattr(train_dataloader.dataset, 'merge_channels'):
+            self.use_channels = not train_dataloader.dataset.merge_channels
+        else:
+            self.use_channels = True
 
     def train_step(self, loss):
         "Train for one step"
@@ -146,12 +156,9 @@ class MiniTrainer:
         pbar = progress_bar(self.train_dataloader, leave=False)
         for batch in pbar:
             frames, t, noise = to_device(batch, device=self.device)
-            
-            # noise[nan_mask] = torch.nan
             with torch.autocast(self.device):
                 predicted_noise = self.model(frames, t)
                 loss = torch.nanmean(F.mse_loss(predicted_noise, noise, reduction="none"))
-
             if loss != torch.nan:
                 self.train_step(loss)
                 wandb.log({"train_mse": loss.item(), "learning_rate": self.scheduler.get_last_lr()[0]})
@@ -171,7 +178,7 @@ class MiniTrainer:
 
             # log predictions
             if epoch % config.log_every_epoch == 0:
-                samples = self.sampler(self.model, past_frames=self.val_batch[:, :-1])
+                samples = self.sampler(self.model, past_frames=self.val_batch[:, :-(NUM_CHANNELS if self.use_channels else 1)])
                 log_images(self.val_batch, samples)
 
         save_model(self.model, config.model_name)
