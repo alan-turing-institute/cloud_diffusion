@@ -29,11 +29,11 @@ def noisify_ddpm(x0):
 
 # modified just to use NUM_CHANNELS
 @torch.no_grad()
-def diffusers_sampler(model, past_frames, sched, **kwargs):
+def diffusers_sampler(model, past_frames, sched, use_channels=False, **kwargs):
     "Using Diffusers built-in samplers"
     model.eval()
     device = next(model.parameters()).device
-    new_frame = torch.randn_like(past_frames[:, -NUM_CHANNELS:], dtype=past_frames.dtype, device=device)
+    new_frame = torch.randn_like(past_frames[:, -(NUM_CHANNELS if use_channels else 1):], dtype=past_frames.dtype, device=device)
     preds = []
     pbar = progress_bar(sched.timesteps, leave=False)
     for t in pbar:
@@ -41,7 +41,7 @@ def diffusers_sampler(model, past_frames, sched, **kwargs):
         noise = model(torch.cat([past_frames, new_frame], dim=1), t)
         new_frame = sched.step(noise, t, new_frame, **kwargs).prev_sample
         preds.append(new_frame.float().cpu())
-    return preds[-1]  # should have size (batch, channels, height, width)
+    return preds[-1]  # should have size (batch, channels, height, width) if use_channels is True
 
 
 def ddim_sampler(steps=350, eta=1.0):
