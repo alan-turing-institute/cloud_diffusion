@@ -21,6 +21,9 @@ from fastprogress import progress_bar
 from cloud_diffusion.wandb import log_images, save_model
 
 
+NAN_REPLACEMENT_VALUE = -1
+
+
 def noisify_last_frame(frames, noise_func):
     "Noisify the last frame of a sequence"
     past_frames = frames[:, :-1]
@@ -29,8 +32,8 @@ def noisify_last_frame(frames, noise_func):
     # images have their nans in -- preserve the mask for the last frame
     last_frame_mask = torch.isnan(last_frame)
     # then we replace all nans in all images with 0s
-    past_frames = torch.nan_to_num(past_frames, nan=0)
-    last_frame = torch.nan_to_num(last_frame, nan=0)
+    past_frames = torch.nan_to_num(past_frames, nan=NAN_REPLACEMENT_VALUE)
+    last_frame = torch.nan_to_num(last_frame, nan=NAN_REPLACEMENT_VALUE)
 
     noised_img, t, e = noise_func(last_frame)
 
@@ -61,8 +64,8 @@ def noisify_last_frame_channels(frames, noise_func):
     last_frame_mask = torch.isnan(last_frame)
 
     # then we replace all nans in all images with 0s
-    past_frames = torch.nan_to_num(past_frames, nan=0)
-    last_frame = torch.nan_to_num(last_frame, nan=0)
+    past_frames = torch.nan_to_num(past_frames, nan=NAN_REPLACEMENT_VALUE)
+    last_frame = torch.nan_to_num(last_frame, nan=NAN_REPLACEMENT_VALUE)
 
  
     # vmap over channels (dim=1)
@@ -151,7 +154,7 @@ class MiniTrainer:
             with torch.autocast(self.device):
                 predicted_noise = self.model(frames, t)
                 loss = torch.nanmean(F.mse_loss(predicted_noise, noise, reduction="none"))
-            if loss != torch.nan:
+            if not torch.isnan(loss):
                 self.train_step(loss)
                 wandb.log({"train_mse": loss.item(), "learning_rate": self.scheduler.get_last_lr()[0]})
             pbar.comment = f"epoch={epoch}, MSE={loss.item():2.3f}"
