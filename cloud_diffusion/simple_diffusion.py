@@ -48,7 +48,7 @@ def noisify_uvit(x0, pred_objective="v"):
 
 @torch.no_grad()
 def forward(model, past_frames, x, t):
-    return model(torch.cat([past_frames, x], dim=1), t)
+    return model(torch.cat([past_frames, x], dim=-3), t)
 
 
 def p_mean_variance(model, past_frames, x, time, time_next, pred_objective="v"):

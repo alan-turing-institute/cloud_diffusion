@@ -17,7 +17,7 @@ DATASET_ARTIFACT = "capecape/gtc/np_dataset:v0"
 
 
 class CloudcastingDataset(SatelliteDataset):
-    def __init__(self, img_size, valid=False, strategy="resize", merge_channels=False, *args, **kwargs):
+    def __init__(self, img_size, valid=False, strategy=None, merge_channels=False, *args, **kwargs):
         
         if "nan_to_num" in kwargs:
             if kwargs["nan_to_num"]:
@@ -29,29 +29,32 @@ class CloudcastingDataset(SatelliteDataset):
             tfms += [T.RandomCrop(img_size)] if not valid else [T.CenterCrop(img_size)]
         elif strategy == "centercrop":
             tfms = [T.CenterCrop(img_size)]
+        elif strategy is None:
+            tfms = []
         else:
             raise ValueError(f"Strategy {strategy} not found")
         self.tfms = T.Compose(tfms)
         self.merge_channels = merge_channels
 
-        if merge_channels:
-            # for each entry in the dataset, randomly select a channel to keep.
-            # note this is deterministic for every entry in the dataset;
-            # you will get the same set of channels every epoch.
-            self._idxs = npr.choice(NUM_CHANNELS, size=super().__len__(), replace=True)
-        else:
-            self._idxs = [...] * super().__len__()  # x[...] just returns x
+        # if merge_channels:
+        #     # for each entry in the dataset, randomly select a channel to keep.
+        #     # note this is deterministic for every entry in the dataset;
+        #     # you will get the same set of channels every epoch.
+        #     self._idxs = npr.choice(NUM_CHANNELS, size=super().__len__(), replace=True)
+        # else:
+        #     self._idxs = [...] * super().__len__()  # x[...] just returns x
 
 
     def __getitem__(self, idx: int):
         # concatenate future prediction and previous frames along time axis
         x, y = super().__getitem__(idx)
-        
-        concat_data = np.concatenate((x, y), axis=-3)[self._idxs[idx]]
+        concat_data = np.concatenate((x, y), axis=-3)
+ 
+        # concat_data = np.concatenate((x, y), axis=-3)[self._idxs[idx]]
         # data is in [0,1] range, normalize to [-0.5, 0.5]
         # note that -1s could be NaNs, which are now at +1.5
         # output has shape (11 (if merge_channels is False), history_steps + forecast_horizon, height, width)
-        return 0.5 - self.tfms(torch.from_numpy(concat_data))
+        return 2*self.tfms(torch.from_numpy(concat_data)) - 1
 
 
 

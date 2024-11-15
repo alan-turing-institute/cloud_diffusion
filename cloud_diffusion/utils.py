@@ -124,6 +124,7 @@ class MiniTrainer:
         model,
         sampler,
         device="cuda",
+        debug=False,
     ):
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
@@ -136,6 +137,7 @@ class MiniTrainer:
             self.use_channels = not train_dataloader.dataset.merge_channels
         else:
             self.use_channels = False  # should be original behavior
+        self.debug = debug
 
     def train_step(self, loss):
         "Train for one step"
@@ -151,16 +153,23 @@ class MiniTrainer:
         pbar = progress_bar(self.train_dataloader, leave=False)
         for batch in pbar:
             frames, t, noise = to_device(batch, device=self.device)
+            if self.debug:
+                import matplotlib.pyplot as plt
+                plt.imshow(frames[0][0].cpu().numpy())
+                plt.imshow(noise[0][0].cpu().numpy())
+                return
             with torch.autocast(self.device):
                 predicted_noise = self.model(frames, t)
                 loss = torch.nanmean(F.mse_loss(predicted_noise, noise, reduction="none"))
             if not torch.isnan(loss):
                 self.train_step(loss)
-                wandb.log({"train_mse": loss.item(), "learning_rate": self.scheduler.get_last_lr()[0]})
+                if not self.debug:
+                    wandb.log({"train_mse": loss.item(), "learning_rate": self.scheduler.get_last_lr()[0]})
             pbar.comment = f"epoch={epoch}, MSE={loss.item():2.3f}"
 
     def prepare(self, config):
-        wandb.config.update(config)
+        if not self.debug:
+            wandb.config.update(config)
         config.total_train_steps = config.epochs * len(self.train_dataloader)
         self.optimizer = AdamW(self.model.parameters(), lr=config.lr, eps=1e-5)
         self.scheduler = OneCycleLR(self.optimizer, max_lr=config.lr, total_steps=config.total_train_steps)
@@ -174,7 +183,8 @@ class MiniTrainer:
             # log predictions
             if epoch % config.log_every_epoch == 0:
                 samples = self.sampler(self.model, past_frames=self.val_batch[:, :-(NUM_CHANNELS if self.use_channels else 1)], use_channels=self.use_channels)
-                log_images(self.val_batch, samples)
+                if not self.debug:
+                    log_images(self.val_batch, samples)
 
         save_model(self.model, config.model_name)
 
