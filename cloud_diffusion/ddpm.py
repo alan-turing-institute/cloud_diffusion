@@ -29,11 +29,18 @@ def noisify_ddpm(x0):
 
 # modified just to use NUM_CHANNELS
 @torch.no_grad()
-def diffusers_sampler(model, past_frames, sched, use_channels=False, **kwargs):
+def diffusers_sampler(model, past_frames, sched, num_channels=4, **kwargs):
     "Using Diffusers built-in samplers"
     model.eval()
     device = next(model.parameters()).device
-    new_frame = torch.randn_like(past_frames[:, -(NUM_CHANNELS if use_channels else 1):], dtype=past_frames.dtype, device=device)
+    new_frame = torch.randn(
+        (
+            past_frames.shape[0],
+            num_channels,
+            past_frames.shape[2],
+            past_frames.shape[3],
+        ),
+        dtype=past_frames.dtype, device=device)
     print(f"{new_frame.shape=}")
     print(f"{past_frames.shape=}")
     preds = []

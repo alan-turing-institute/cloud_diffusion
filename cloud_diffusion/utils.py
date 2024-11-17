@@ -29,8 +29,7 @@ def noisify_last_frame(frames, noise_func):
     past_frames = frames[:, :-1]
     last_frame = frames[:, -1:]
 
-    # images have their nans in -- preserve the mask for the last frame
-    last_frame_mask = torch.isnan(last_frame)
+
     # then we replace all nans in all images with 0s
     past_frames = torch.nan_to_num(past_frames, nan=NAN_REPLACEMENT_VALUE)
     last_frame = torch.nan_to_num(last_frame, nan=NAN_REPLACEMENT_VALUE)
@@ -38,7 +37,7 @@ def noisify_last_frame(frames, noise_func):
     noised_img, t, e = noise_func(last_frame)
 
     # replace the nans in the noise with the original nans
-    e[last_frame_mask] = torch.nan
+
     return torch.cat([past_frames, noised_img], dim=1), t, e
 
 
