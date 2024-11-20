@@ -20,7 +20,7 @@ def get_hacked_vae(pretrained_model_path: str = "stabilityai/sdxl-vae"):
         groups=encoder_in.groups,
         padding_mode=encoder_in.padding_mode,
         dilation=encoder_in.dilation,
-    )
+    ).half()
 
     def duplicate_weights_in_channels(
         layer: torch.nn.Module, channels: int
@@ -81,7 +81,7 @@ def get_hacked_vae(pretrained_model_path: str = "stabilityai/sdxl-vae"):
         groups=decoder_out.groups,
         padding_mode=decoder_out.padding_mode,
         dilation=decoder_out.dilation,
-    )
+    ).half()
 
     def duplicate_weights_out_channels(
         layer: torch.nn.Module, channels: int
@@ -144,7 +144,7 @@ def get_hacked_vae(pretrained_model_path: str = "stabilityai/sdxl-vae"):
 
 def encode_img(img, vae):
     # could be wrong scaling factor since we've changed the architecture
-    return vae.encode(img).latent_dist.sample() * (1 / vae.config.scaling_factor)
+    return vae.encode(img).latent_dist.sample()  # * (1 / vae.config.scaling_factor)?
 
 encode_frames = torch.vmap(encode_img, in_dims=(2, None), out_dims=(2), randomness="same")
 

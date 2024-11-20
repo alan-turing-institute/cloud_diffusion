@@ -31,6 +31,8 @@ def crop_and_uncrop(stride=256, y_start=70,  x_start=130,):
     
     return crop, uncrop
 
+crop, uncrop = crop_and_uncrop()
+
 class CloudcastingDataset(SatelliteDataset):
     def __init__(self, img_size, valid=False, strategy=None, merge_channels=False, *args, **kwargs):
         
@@ -50,7 +52,6 @@ class CloudcastingDataset(SatelliteDataset):
             raise ValueError(f"Strategy {strategy} not found")
         self.tfms = T.Compose(tfms)
         self.merge_channels = merge_channels
-        self.crop, self.uncrop = crop_and_uncrop()
 
         # if merge_channels:
         #     # for each entry in the dataset, randomly select a channel to keep.
@@ -70,7 +71,7 @@ class CloudcastingDataset(SatelliteDataset):
         # data is in [0,1] range, normalize to [-0.5, 0.5]
         # note that -1s could be NaNs, which are now at +1.5
         # output has shape (11 (if merge_channels is False), history_steps + forecast_horizon, height, width)
-        return self.crop(2*self.tfms(torch.from_numpy(concat_data)) - 1)
+        return crop(2*self.tfms(torch.from_numpy(concat_data)) - 1)
 
 
 
