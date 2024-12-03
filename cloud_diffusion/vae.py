@@ -3,106 +3,116 @@ from diffusers.models import AutoencoderKL
 from torch import nn
 from cloudcasting.constants import NUM_CHANNELS
 
-__all__ = ("get_hacked_vae", "VAEChannelAdapter",)
+__all__ = ("get_hacked_vae", "TemporalVAEAdapter",)
 
 
-class VAEChannelAdapter(nn.Module):
+from torch import nn
+
+class TemporalVAEAdapter(nn.Module):
     """
-    Adapter module to convert arbitrary channel inputs to work with SDXL VAE.
-    
-    Key design principles:
-    1. Gradual channel reduction to preserve information
-    2. Careful normalization for training stability
-    3. Bounded outputs to match VAE expectations
-    4. Separation of concerns between adaptation and encoding
+    VAE adapter that handles temporal sequences of images.
+    Maintains proper scaling and channel adaptation while preserving
+    temporal information throughout the process.
     """
-    def __init__(self, vae, in_channels=11):
+    def __init__(self, vae, channels=11):
         super().__init__()
         self.vae = vae
+        self.channels = channels
+        self.scaling_factor = vae.config.scaling_factor
         
-        # Input adapter network: converts in_channels -> 3 channels
-        # Architecture designed for stability and information preservation
+        # Channel adapters (same as before)
         self.in_adapter = nn.Sequential(
-            # Layer 1: Initial dimension expansion and processing
-            # - Expand to 32 channels to preserve information capacity
-            # - 3x3 conv maintains spatial context
-            # - Padding=1 preserves spatial dimensions
-            nn.Conv2d(in_channels, 32, 3, padding=1),
-            # GroupNorm with 8 groups (4 channels per group)
-            # - Batch-size independent normalization
-            # - More stable than BatchNorm or LayerNorm for image data
+            nn.Conv2d(channels, 32, 3, padding=1),
             nn.GroupNorm(8, 32),
-            # SiLU activation
-            # - Smooth gradients
-            # - No vanishing gradient issues
-            # - Better performance than ReLU for vision tasks
             nn.SiLU(),
-            
-            # Layer 2: Intermediate processing
-            # - Reduce channels gradually (32 -> 16)
-            # - Maintain spatial dimensions
             nn.Conv2d(32, 16, 3, padding=1),
-            # GroupNorm with 4 groups (4 channels per group)
-            # - Groups reduced to maintain consistent channels per group
             nn.GroupNorm(4, 16),
             nn.SiLU(),
-            
-            # Layer 3: Final mapping to RGB
-            # - Convert to 3 channels for VAE input
-            # - Maintain spatial dimensions
             nn.Conv2d(16, 3, 3, padding=1),
-            # Tanh activation
-            # - Forces output to [-1, 1] range
-            # - Matches VAE's expected input distribution
-            # - Prevents extreme values
+            nn.Tanh()
+        )
+        
+        self.out_adapter = nn.Sequential(
+            nn.Conv2d(3, 32, 3, padding=1),
+            nn.GroupNorm(8, 32),
+            nn.SiLU(),
+            nn.Conv2d(32, 16, 3, padding=1),
+            nn.GroupNorm(4, 16),
+            nn.SiLU(),
+            nn.Conv2d(16, channels, 3, padding=1),
             nn.Tanh()
         )
         
         # Freeze VAE parameters
-        # - Prevents modification of pretrained weights
-        # - Ensures stability of latent space
-        # - Reduces training complexity
         for param in self.vae.parameters():
             param.requires_grad = False
     
-    def encode(self, x):
+    def encode_frames(self, x):
         """
-        Convert input to 3 channels and encode with VAE.
-        
-        Process:
-        1. Transform input channels to RGB-like space
-        2. Use pretrained VAE encoder
-        
-        Returns VAE's latent distribution for sampling
-        """
-        x = self.in_adapter(x)  # Convert to 3 channels
-        return self.vae.encode(x)  # Use original VAE encoder
-    
-    def decode(self, z):
-        """
-        Decode latents using VAE decoder.
-        
-        Note: No modification needed here since:
-        - Decoder operates in latent space
-        - Output is already in desired format
-        """
-        return self.vae.decode(z)
-    
-    @staticmethod
-    def scale_latents(latents, vae, encode=True):
-        """
-        Scale latents by VAE's scaling factor.
+        Encode a sequence of frames.
         
         Args:
-            latents: Tensor to scale
-            vae: VAE model containing scaling factor
-            encode: If True, scale for encoding (multiply)
-                   If False, scale for decoding (divide)
+            x: [B, C, T, H, W] tensor where:
+                B = batch size
+                C = input channels
+                T = number of frames
+                H = height
+                W = width
+        
+        Returns:
+            [B, C_latent, T, H_latent, W_latent] tensor
         """
-        scaling_factor = vae.config.scaling_factor
-        if encode:
-            return latents * scaling_factor
-        return latents / scaling_factor
+        B, C, T, H, W = x.shape
+        
+        # Reshape to combine batch and time: [B*T, C, H, W]
+        x_flat = x.permute(0, 2, 1, 3, 4).reshape(B*T, C, H, W)
+        
+        # Process through channel adapter
+        x_adapted = self.in_adapter(x_flat)
+        
+        # Encode and scale
+        latents = self.vae.encode(x_adapted).latent_dist.sample()
+        latents = latents * self.scaling_factor
+        
+        # Reshape back to temporal form
+        _, C_latent, H_latent, W_latent = latents.shape
+        return latents.reshape(B, T, C_latent, H_latent, W_latent).permute(0, 2, 1, 3, 4)
+    
+    def decode_frames(self, z):
+        """
+        Decode a sequence of latent frames.
+        
+        Args:
+            z: [B, C, T, H, W] tensor of scaled latents
+        
+        Returns:
+            [B, C_out, T, H_out, W_out] tensor
+        """
+        B, C, T, H, W = z.shape
+        
+        # Reshape to combine batch and time
+        z_flat = z.permute(0, 2, 1, 3, 4).reshape(B*T, C, H, W)
+        
+        # Descale and decode
+        z_flat = z_flat / self.scaling_factor
+        decoded = self.vae.decode(z_flat).sample
+        
+        # Process through output adapter
+        decoded = self.out_adapter(decoded)
+        
+        # Reshape back to temporal form
+        _, C_out, H_out, W_out = decoded.shape
+        return decoded.reshape(B, T, C_out, H_out, W_out).permute(0, 2, 1, 3, 4)
+    
+    def forward(self, x, encode=True):
+        """
+        Forward pass handling both encoding and decoding.
+        
+        Args:
+            x: Input tensor ([B, C, T, H, W])
+            encode: If True, encode frames; if False, decode frames
+        """
+        return self.encode_frames(x) if encode else self.decode_frames(x)
 
 
 def get_hacked_vae(pretrained_model_path: str = "stabilityai/sdxl-vae"):
