@@ -41,15 +41,15 @@ def diffusers_sampler(model, past_frames, sched, num_channels=4, **kwargs):
             past_frames.shape[3],
         ),
         dtype=past_frames.dtype, device=device)
-    print(f"{new_frame.shape=}")
-    print(f"{past_frames.shape=}")
+    # print(f"{new_frame.shape=}")
+    # print(f"{past_frames.shape=}")
     preds = []
     pbar = progress_bar(sched.timesteps, leave=False)
     for t in pbar:
         pbar.comment = f"DDIM Sampler: frame {t}"
         noise = model(torch.cat([past_frames, new_frame], dim=1), t)
         new_frame = sched.step(noise, t, new_frame, **kwargs).prev_sample
-        preds.append(new_frame.float().cpu())
+        preds.append(new_frame.float())
     return preds[-1]  # should have size (batch, channels, height, width) if use_channels is True
 
 
