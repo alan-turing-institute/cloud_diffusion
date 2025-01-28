@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 __all__ = ("visualize_channels_over_time",)
 
 
+channel_names = ['IR_016', 'IR_039', 'IR_087', 'IR_097', 'IR_108', 'IR_120', 'IR_134',
+       'VIS006', 'VIS008', 'WV_062', 'WV_073']
+
+
 def visualize_channels_over_time(images,  batch_idx=0, figsize=(12, 8), cmap='viridis'):
     """
     Visualize multi-channel images over time, handling both single and multiple timesteps.

@@ -21,6 +21,7 @@ import torch.nn.functional as F
 
 from fastprogress import progress_bar
 from diffusers.models import AutoencoderKL
+import matplotlib.pyplot as plt
 
 
 channel_names = ['IR_016', 'IR_039', 'IR_087', 'IR_097', 'IR_108', 'IR_120', 'IR_134',
@@ -63,6 +64,9 @@ config.model_params = dict(
 )
 
 def main(config):
+    wandb.define_metric("loss", summary="min")
+    wandb.define_metric("diffusion-loss", summary="min")
+    wandb.define_metric("vae-loss", summary="min")
 
     set_seed(config.seed)
 
@@ -141,7 +145,7 @@ def main(config):
         unet.train()
         vae.train()
         pbar = progress_bar(train_dataloader, leave=False)
-        for batch in pbar:
+        for i, batch in enumerate(pbar):
             if torch.isnan(batch).all():
                 continue
                 
@@ -168,7 +172,7 @@ def main(config):
             img_batch_hat = vae.decode_frames(latents)
             vae_loss = F.mse_loss(img_batch_hat, img_batch)
             
-            loss = diffusion_loss + vae_loss * vae_loss_scale
+            loss = diffusion_loss + vae_loss * config.vae_loss_scale
             
             optimizer.zero_grad()
             scaler.scale(loss).backward()
@@ -177,22 +181,25 @@ def main(config):
             scheduler.step()
             
             pbar.comment = f"epoch={epoch}, vae_loss={vae_loss.item():2.3f}, diffusion_loss={diffusion_loss.item():2.3f}"
+            wandb.log({"loss": diffusion_loss.item() + vae_loss.item() * config.vae_loss_scale})
+            wandb.log({"diffusion-loss": diffusion_loss.item()})
+            wandb.log({"vae-loss": vae_loss.item()})
 
-        if epoch % config.log_every_epoch == 0:
-            with torch.no_grad():
-                vae.eval()
-                val_latents = vae.encode_frames(val_batch)
-                check_tensor(val_latents, 'val_latents', print_stats=True)
-                past_val_frames = val_latents[:, :, :-1]
-                last_val_frame = val_latents[:, :, -1]  # intentionally remove time dim
-                past_val_frames = past_val_frames.permute(0, 2, 1, 3, 4).reshape(val_latents.shape[0], -1, val_latents.shape[3], val_latents.shape[4])
-                samples = sampler(unet, past_frames=past_val_frames, num_channels=4)
-                samples = samples.unsqueeze(dim=2)
-                check_tensor(samples, 'samples', print_stats=True)
-                decoded = vae.decode_frames(samples).cpu()
+            if i % 10 == 0:
+                with torch.no_grad():
+                    vae.eval()
+                    val_latents = vae.encode_frames(val_batch)
+                    past_val_frames = val_latents[:, :, :-1]
+                    past_val_frames = past_val_frames.permute(0, 2, 1, 3, 4).reshape(val_latents.shape[0], -1, val_latents.shape[3], val_latents.shape[4])
+                    samples = sampler(unet, past_frames=past_val_frames, num_channels=4)
+                    samples = samples.unsqueeze(dim=2)
+                    decoded = vae.decode_frames(samples).cpu()
 
-            valid_plot = visualize_channels_over_time(torch.cat((val_batch[:,:,:-1].detach().cpu(), decoded), dim=2));
-            wandb.log({"all-channels": valid_plot})
+                valid_plot = visualize_channels_over_time(torch.cat((val_batch[:,:,:-1].detach().cpu(), decoded), dim=2));
+                wandb.log({"all-channels": valid_plot})
+                plt.close()
+                if DEBUG: break
+        if DEBUG: break
 
     save_model(vae, config.model_name + '-unet')
     save_model(unet, config.model_name + '-vae')
