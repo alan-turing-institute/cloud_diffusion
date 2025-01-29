@@ -8,7 +8,7 @@ channel_names = ['IR_016', 'IR_039', 'IR_087', 'IR_097', 'IR_108', 'IR_120', 'IR
        'VIS006', 'VIS008', 'WV_062', 'WV_073']
 
 
-def visualize_channels_over_time(images,  batch_idx=0, figsize=(12, 8), cmap='viridis'):
+def visualize_channels_over_time(images,  batch_idx=0, figsize=(12, 8), cmap='viridis', diff=False):
     """
     Visualize multi-channel images over time, handling both single and multiple timesteps.
     
@@ -47,7 +47,10 @@ def visualize_channels_over_time(images,  batch_idx=0, figsize=(12, 8), cmap='vi
             #     img = (img - img_min) / (img_max - img_min)
             
             # Plot the image
-            im = axes[channel, timestep].imshow(img, cmap=cmap, origin='lower')
+            if diff:
+                im = axes[channel, timestep].imshow(img, cmap='RdBu', vmin=-1, vmax=1)
+            else:
+                im = axes[channel, timestep].imshow(img, cmap=cmap, origin='lower')
             axes[channel, timestep].axis('off')
             
             # Add colorbar

@@ -14,7 +14,7 @@ class TemporalVAEAdapter(nn.Module):
     Maintains proper scaling and channel adaptation while preserving
     temporal information throughout the process.
     """
-    def __init__(self, vae, channels=11):
+    def __init__(self, vae, channels=11, train_all=False):
         super().__init__()
         self.vae = vae
         self.channels = channels
@@ -44,8 +44,9 @@ class TemporalVAEAdapter(nn.Module):
         )
         
         # Freeze VAE parameters
-        for param in self.vae.parameters():
-            param.requires_grad = False
+        if not train_all:
+            for param in self.vae.parameters():
+                param.requires_grad = False
     
     def encode_frames(self, x):
         """
