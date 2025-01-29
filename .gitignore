@@ -165,3 +165,6 @@ artifacts/
 models/
 training_nbs/
 
+
+# training
+train_script.sh
