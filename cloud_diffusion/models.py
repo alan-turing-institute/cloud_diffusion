@@ -1,3 +1,4 @@
+"""Mostly untouched models from diffusers. Code from original cloud_diffusion repo."""
 from pathlib import Path
 
 import wandb
