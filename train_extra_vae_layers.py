@@ -50,13 +50,6 @@ config = SimpleNamespace(
 device = config.device
 HISTORY_STEPS = config.num_frames - 1
 
-# unet model parameters
-config.model_params = dict(
-    block_out_channels=(32, 64, 128, 256),  # number of channels for each block
-    norm_num_groups=8,  # number of groups for the normalization layer
-    in_channels=config.num_frames * config.latent_dim,  # number of input channels
-    out_channels=config.latent_dim,  # number of output channels
-)
 
 def main(config):
     wandb.define_metric("loss", summary="min")
@@ -162,15 +155,14 @@ def main(config):
                     wandb.log({f"all-channels-{idx}": valid_plot})
 
                 # offload VAE to CPU and clear GPU memory
-                vae.cpu()
                 torch.cuda.empty_cache()
                 if DEBUG: break
         if DEBUG: break
         # saving checkpoints every n epochs
         if epoch % config.save_every_n_epochs == 0:  
-            save_model(unet, config.model_name + '-unet-' + f'{epoch=}')
+            save_model(vae, config.model_name + '-vae-' + f'{epoch=}')
 
-    save_model(unet, config.model_name + '-unet')
+    save_model(vae, config.model_name + '-vae')
 
 
  
