@@ -27,7 +27,7 @@ setup(
         "matplotlib",
         "diffusers >= 0.9.0",
         "denoising_diffusion_pytorch >=1.1.0",
-        "cloudcasting @ git+https://github.com/alan-turing-institute/cloudcasting.git@v0.4.0",
+        "cloudcasting @ git+https://github.com/alan-turing-institute/cloudcasting.git",
         "huggingface-hub<0.26",
     ],
     classifiers=[

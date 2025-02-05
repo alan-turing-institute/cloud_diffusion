@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_NAME = "latent-diffusion-test"
-DEBUG = False 
+DEBUG = True 
 LOCAL = False
 
 config = SimpleNamespace(
@@ -49,7 +49,7 @@ config = SimpleNamespace(
     
     # Autoencoder configuration
     pretrained_autoencoder_name="stabilityai/sdxl-vae",  # Pre-trained VAE model identifier
-    vae_checkpoint='/bask/projects/v/vjgo8416-climate/users/gmmg6904/cloud_diffusion/models/keep/omf5mrig_cloud-finetune--vae-epoch4.pth',
+    vae_checkpoint=None,  #'/bask/projects/v/vjgo8416-climate/users/gmmg6904/cloud_diffusion/models/keep/omf5mrig_cloud-finetune--vae-epoch4.pth',
     
     # System and resource settings (not exhaustive, do not hesitate to add more)
     device="mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
@@ -87,7 +87,6 @@ def main(config):
     # see the CloudcastingDataset class for information on cropping (controlled by stride, y_start, x_start)
     # the rest of the args are just passed to the original SatelliteDataset class
     train_ds = CloudcastingDataset(
-        valid=False,
         zarr_path=TRAINING_DATA_PATH,
         start_time=None,
         end_time=None,
@@ -97,7 +96,6 @@ def main(config):
     )
     # worth noting they do some sort of shuffling here; we don't for now
     valid_ds = CloudcastingDataset(
-        valid=True,
         zarr_path=VALIDATION_DATA_PATH,
         start_time=None,
         end_time=None,
@@ -194,9 +192,9 @@ def main(config):
                         samples = sampler(unet, past_frames=past_val_frames, num_channels=4)
                         samples = samples.unsqueeze(dim=2)
                         decoded = vae.decode_frames(samples).cpu()
-    
+
                     valid_plot = visualize_channels_over_time(torch.cat((val_batch[:,:,:-1].detach().cpu(), decoded), dim=2), batch_idx=idx);
-                    valid_plot_diff = visualize_channels_over_time(val_batch[:, :, -1].detach().cpu() - decoded, diff=True);
+                    valid_plot_diff = visualize_channels_over_time(val_batch[:, :, -1:].detach().cpu() - decoded, diff=True);
                     plt.close('all') 
                     wandb.log({f"differences-{idx}": valid_plot_diff})
                     wandb.log({f"all-channels-{idx}": valid_plot})

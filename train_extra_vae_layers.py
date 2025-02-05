@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_NAME = "latent-diffusion-test"
-DEBUG = False 
+DEBUG = True 
 LOCAL = False
 
 config = SimpleNamespace(
@@ -38,7 +38,10 @@ config = SimpleNamespace(
     # Model architecture
     model_name="latent-diffusion",    # Architecture type for saving/loading (options: unet_small, unet_big)
     pretrained_autoencoder_name="stabilityai/sdxl-vae",  # Pre-trained VAE model identifier
-    vae_checkpoint='/bask/projects/v/vjgo8416-climate/users/gmmg6904/cloud_diffusion/models/keep/omf5mrig_cloud-finetune--vae-epoch4.pth',
+    vae_checkpoint=None, #'/bask/projects/v/vjgo8416-climate/users/gmmg6904/cloud_diffusion/models/keep/omf5mrig_cloud-finetune--vae-epoch4.pth',
+    num_frames = 4,  # number of diffusion frames including noise; not used for diffusion, just to define HISTORY_STEPS.
+                     # probably not needed, kept for consistency -- this will make the VAE fine-tune
+                     # to the same input shapes as you would use for diffusion training. could be anything though!
     
     # System and resource settings (not exhaustive, do not hesitate to add more)
     device="mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
@@ -69,7 +72,6 @@ def main(config):
     # see the CloudcastingDataset class for information on cropping (controlled by stride, y_start, x_start)
     # the rest of the args are just passed to the original SatelliteDataset class
     train_ds = CloudcastingDataset(
-        valid=False,
         zarr_path=TRAINING_DATA_PATH,
         start_time=None,
         end_time=None,
@@ -79,7 +81,6 @@ def main(config):
     )
     # worth noting they do some sort of shuffling here; we don't for now
     valid_ds = CloudcastingDataset(
-        valid=True,
         zarr_path=VALIDATION_DATA_PATH,
         start_time=None,
         end_time=None,
@@ -91,7 +92,7 @@ def main(config):
     train_dataloader = DataLoader(train_ds, config.batch_size, shuffle=True,  num_workers=config.num_workers, pin_memory=config.pin_memory)
     valid_dataloader = DataLoader(valid_ds, config.batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=config.pin_memory)
 
-    vae = TemporalVAEAdapter(AutoencoderKL.from_pretrained(config.pretrained_autoencoder_name))
+    vae = TemporalVAEAdapter(AutoencoderKL.from_pretrained(config.pretrained_autoencoder_name).to(device)).to(device)
     if config.vae_checkpoint is not None:
         vae.load_state_dict(torch.load(config.vae_checkpoint, weights_only=True))
     vae.train()
@@ -104,7 +105,7 @@ def main(config):
     param_groups = [
         {
             'params': [p for p in vae.parameters() if p.requires_grad],
-            'lr': config.vae_lr,
+            'lr': config.lr,
             'eps': 1e-5
         },
     ]
