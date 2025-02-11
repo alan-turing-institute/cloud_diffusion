@@ -24,21 +24,21 @@ import matplotlib.pyplot as plt
 
 
 PROJECT_NAME = "latent-diffusion-test"
-DEBUG = True 
+DEBUG = False 
 LOCAL = False
 
 config = SimpleNamespace(
     # Training parameters
-    epochs=50,                   # Total number of training iterations over the complete dataset
-    lr=5e-4,                     # Learning rate for optimizer
+    epochs=11,                   # Total number of training iterations over the complete dataset
+    lr=5e-6,                     # Learning rate for optimizer
     batch_size=4,                # Number of samples processed in each training step
     log_every_n_steps=1000,      # Frequency of logging plots to Weights & Biases
-    save_every_n_epochs=10,      # Frequency of saving model checkpoints
+    save_every_n_epochs=5,      # Frequency of saving model checkpoints
     
     # Model architecture
     model_name="latent-diffusion",    # Architecture type for saving/loading (options: unet_small, unet_big)
     pretrained_autoencoder_name="stabilityai/sdxl-vae",  # Pre-trained VAE model identifier
-    vae_checkpoint=None, #'/bask/projects/v/vjgo8416-climate/users/gmmg6904/cloud_diffusion/models/keep/omf5mrig_cloud-finetune--vae-epoch4.pth',
+    vae_checkpoint='/bask/projects/v/vjgo8416-climate/users/gmmg6904/cloud_diffusion_old/models/keep/omf5mrig_cloud-finetune--vae-epoch4.pth',
     num_frames = 4,  # number of diffusion frames including noise; not used for diffusion, just to define HISTORY_STEPS.
                      # probably not needed, kept for consistency -- this will make the VAE fine-tune
                      # to the same input shapes as you would use for diffusion training. could be anything though!

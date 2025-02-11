@@ -29,11 +29,11 @@ LOCAL = False
 
 config = SimpleNamespace(
     # Training parameters
-    epochs=50,                   # Total number of training iterations over the complete dataset
-    lr=5e-4,                     # Learning rate for optimizer
-    batch_size=4,                # Number of samples processed in each training step
+    epochs=11,                   # Total number of training iterations over the complete dataset
+    lr=5e-5,                     # Learning rate for optimizer
+    batch_size=32,                # Number of samples processed in each training step
     log_every_n_steps=1000,      # Frequency of logging plots to Weights & Biases
-    save_every_n_epochs=10,      # Frequency of saving model checkpoints
+    save_every_n_epochs=5,      # Frequency of saving model checkpoints
     
     # Model architecture
     model_name="latent-diffusion",    # Architecture type for saving/loading (options: unet_small, unet_big)
